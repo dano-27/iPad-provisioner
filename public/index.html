@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iPad Provisioner</title>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --surface2: #232733; --border: #2e3345;
+    --text: #e4e6ed; --text-dim: #8b8fa3;
+    --accent: #6c8cff; --accent-glow: rgba(108,140,255,0.15);
+    --green: #3dd68c; --green-glow: rgba(61,214,140,0.15);
+    --red: #ff6b6b; --red-glow: rgba(255,107,107,0.15);
+    --orange: #ffb347; --orange-glow: rgba(255,179,71,0.15);
+    --purple: #b388ff; --purple-glow: rgba(179,136,255,0.15);
+    --radius: 12px; --radius-sm: 8px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  /* Header */
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 18px 32px; display: flex; align-items: center; justify-content: space-between; }
+  header .title { display: flex; align-items: center; gap: 12px; font-size: 20px; font-weight: 600; }
+  header .title span.icon { font-size: 28px; }
+  header .status { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--text-dim); }
+  header .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .wifi-badge { display:inline-flex; align-items:center; gap:6px; background:var(--surface2); border:1px solid var(--border); border-radius:20px; padding:4px 12px; font-size:12px; color:var(--text-dim); }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 0; background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 32px; }
+  .tab { padding: 14px 24px; font-size: 14px; font-weight: 500; color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* Layout */
+  .container { max-width: 1000px; margin: 0 auto; padding: 28px 24px; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+  section { margin-bottom: 28px; }
+  section h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 14px; }
+
+  /* Device Cards */
+  .device-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+  .device-card { background: var(--surface); border: 2px solid var(--border); border-radius: var(--radius); padding: 14px 16px; cursor: pointer; transition: all 0.15s; position: relative; }
+  .device-card:hover { border-color: var(--accent); background: var(--surface2); }
+  .device-card.selected { border-color: var(--accent); background: var(--accent-glow); }
+  .device-card .check { position:absolute; top:10px; right:12px; width:20px; height:20px; border:2px solid var(--border); border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:12px; transition: all 0.15s; }
+  .device-card.selected .check { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .device-card .device-name { font-weight: 600; font-size: 15px; margin-bottom: 4px; padding-right: 28px; }
+  .device-card .device-meta { font-size: 11px; color: var(--text-dim); line-height: 1.6; }
+  .no-devices { background:var(--surface); border:2px dashed var(--border); border-radius:var(--radius); padding:36px; text-align:center; color:var(--text-dim); }
+  .no-devices .big-icon { font-size: 36px; margin-bottom: 10px; }
+  .refresh-btn { background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:5px 12px; border-radius:var(--radius-sm); font-size:12px; cursor:pointer; margin-top:10px; }
+
+  /* Mode Cards */
+  .mode-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .mode-card { background:var(--surface); border:2px solid var(--border); border-radius:var(--radius); padding:20px; cursor:pointer; transition:all 0.15s; text-align:center; }
+  .mode-card:hover { border-color: var(--accent); }
+  .mode-card.selected { border-color: var(--accent); background: var(--accent-glow); }
+  .mode-card.mode-reset.selected { border-color: var(--orange); background: var(--orange-glow); }
+  .mode-card.mode-square.selected { border-color: var(--purple); background: var(--purple-glow); }
+  .mode-card .mode-icon { font-size: 28px; margin-bottom: 8px; }
+  .mode-card .mode-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+  .mode-card .mode-desc { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+
+  /* CSV Panel */
+  #csv-section { display: none; }
+  .csv-area { width: 100%; min-height: 120px; background: #0a0c12; border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; font-family: 'SF Mono','Fira Code',monospace; font-size: 13px; color: var(--text); resize: vertical; }
+  .csv-area::placeholder { color: var(--text-dim); }
+  .csv-upload { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+  .csv-upload label { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 7px 16px; border-radius: var(--radius-sm); font-size: 13px; cursor: pointer; transition: all 0.15s; }
+  .csv-upload label:hover { border-color: var(--accent); }
+  .csv-upload input[type=file] { display: none; }
+  .csv-info { font-size: 12px; color: var(--text-dim); }
+
+  /* Match Table */
+  #match-section { display: none; }
+  .match-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .match-table th { text-align: left; padding: 8px 12px; background: var(--surface2); color: var(--text-dim); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .match-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  .match-table tr.matched td:first-child::before { content: '✓ '; color: var(--green); }
+  .match-table tr.unmatched { opacity: 0.45; }
+  .match-table tr.unmatched td:first-child::before { content: '✗ '; color: var(--red); }
+
+  /* Action */
+  .actions { display: flex; align-items: center; gap: 16px; margin-top: 4px; }
+  .start-btn { background:var(--accent); color:#fff; border:none; padding:13px 36px; border-radius:var(--radius); font-size:15px; font-weight:600; cursor:pointer; transition:all 0.2s; letter-spacing:0.3px; }
+  .start-btn:hover:not(:disabled) { filter:brightness(1.15); transform:translateY(-1px); }
+  .start-btn:disabled { opacity:0.35; cursor:not-allowed; transform:none; }
+  .start-btn.destructive { background: var(--orange); }
+  .start-btn.square { background: var(--purple); }
+  .action-hint { font-size: 13px; color: var(--text-dim); }
+
+  /* Progress */
+  #progress-section { display: none; }
+  .progress-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 14px; }
+  .progress-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px; }
+  .progress-card .pc-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .progress-card .pc-name { font-weight:600; font-size:14px; }
+  .pc-status { font-size:11px; font-weight:600; padding:3px 10px; border-radius:12px; text-transform:uppercase; letter-spacing:0.5px; }
+  .pc-status.running { background:var(--accent-glow); color:var(--accent); }
+  .pc-status.done { background:var(--green-glow); color:var(--green); }
+  .pc-status.error { background:var(--red-glow); color:var(--red); }
+  .step-list { list-style:none; }
+  .step-list li { display:flex; align-items:center; gap:10px; padding:7px 0; font-size:13px; border-bottom:1px solid var(--border); }
+  .step-list li:last-child { border-bottom:none; }
+  .step-list .step-icon { width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; }
+  .step-list .step-label { flex:1; }
+  .step-list .step-detail { font-size:11px; color:var(--text-dim); max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .step-pending .step-icon { color:var(--text-dim); }
+  .step-pending .step-label { color:var(--text-dim); }
+  .step-running .step-icon { color:var(--accent); }
+  .step-done .step-icon { color:var(--green); }
+  .step-warn .step-icon { color:var(--orange); }
+  .step-error .step-icon { color:var(--red); }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .spinner { width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; }
+
+  /* Log */
+  #log-section { display: none; }
+  .log-panel { background:#0a0c12; border:1px solid var(--border); border-radius:var(--radius); padding:14px; max-height:200px; overflow-y:auto; font-family:'SF Mono','Fira Code',monospace; font-size:11px; line-height:1.8; color:var(--text-dim); }
+  .log-line { white-space:pre-wrap; word-break:break-all; }
+  .log-line.info { color:var(--accent); }
+  .log-line.success { color:var(--green); }
+  .log-line.error { color:var(--red); }
+  .log-line.warn { color:var(--orange); }
+
+  @media (max-width:700px) { .mode-grid{grid-template-columns:1fr;} .progress-grid{grid-template-columns:1fr;} .tabs{padding:0 16px;} .container{padding:20px 16px;} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="title"><span class="icon">📱</span> iPad Provisioner</div>
+  <div class="status">
+    <div class="dot" id="conn-dot"></div>
+    <span id="conn-text">Connecting...</span>
+    <span class="wifi-badge" id="wifi-badge" style="display:none">📶 <span id="wifi-ssid"></span></span>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- Devices -->
+  <section>
+    <h2>Connected Devices <span id="device-count" style="color:var(--accent)"></span></h2>
+    <div id="device-grid" class="device-grid"></div>
+  </section>
+
+  <!-- Mode -->
+  <section>
+    <h2>Action</h2>
+    <div class="mode-grid">
+      <div class="mode-card selected" data-mode="provision-only" onclick="selectMode('provision-only')">
+        <div class="mode-icon">⚡</div>
+        <div class="mode-title">Provision Only</div>
+        <div class="mode-desc">Device already reset.<br>Push WiFi + skip setup.</div>
+      </div>
+      <div class="mode-card mode-reset" data-mode="full-reset" onclick="selectMode('full-reset')">
+        <div class="mode-icon">🔄</div>
+        <div class="mode-title">Full Reset</div>
+        <div class="mode-desc">Factory erase (keep eSIM)<br>then provision.</div>
+      </div>
+      <div class="mode-card mode-square" data-mode="square-setup" onclick="selectMode('square-setup')">
+        <div class="mode-icon">🟩</div>
+        <div class="mode-title">Square POS Setup</div>
+        <div class="mode-desc">Enter device codes into<br>Square POS from a CSV.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CSV Input (Square mode only) -->
+  <section id="csv-section">
+    <h2>Device Code CSV</h2>
+    <textarea class="csv-area" id="csv-input" placeholder="serial,device_code
+DMXXXXXXXXXX1,ABC-DEF-1234
+DMXXXXXXXXXX2,GHI-JKL-5678
+
+Paste your CSV here or upload a file ↓"></textarea>
+    <div class="csv-upload">
+      <label for="csv-file">📎 Upload CSV file</label>
+      <input type="file" id="csv-file" accept=".csv,.txt" onchange="handleFileUpload(event)">
+      <button class="refresh-btn" onclick="loadTemplate()">📋 Load Template</button>
+      <span class="csv-info" id="csv-info"></span>
+    </div>
+  </section>
+
+  <!-- Match Table (Square mode only) -->
+  <section id="match-section">
+    <h2>CSV ↔ Device Matches</h2>
+    <table class="match-table" id="match-table">
+      <thead><tr><th>Serial</th><th>Device Code</th><th>iPad</th><th>Status</th></tr></thead>
+      <tbody id="match-body"></tbody>
+    </table>
+  </section>
+
+  <!-- Actions -->
+  <section>
+    <div class="actions">
+      <button class="start-btn" id="start-btn" onclick="startAction()" disabled>Start</button>
+      <span class="action-hint" id="action-hint">Select at least one device</span>
+    </div>
+  </section>
+
+  <!-- Progress -->
+  <section id="progress-section">
+    <h2>Progress</h2>
+    <div id="progress-grid" class="progress-grid"></div>
+  </section>
+
+  <!-- Log -->
+  <section id="log-section">
+    <h2>Activity Log</h2>
+    <div class="log-panel" id="log-panel"></div>
+  </section>
+
+</div>
+
+<script>
+// ─── State ────────────────────────────────────────────────
+
+let devices = [];
+let selectedEcids = new Set();
+let selectedMode = 'provision-only';
+let isRunning = false;
+let config = {};
+let csvData = []; // parsed [{serial, deviceCode}]
+
+// ─── Init ─────────────────────────────────────────────────
+
+async function init() {
+  await fetchConfig();
+  await refreshDevices();
+  connectSSE();
+  setInterval(() => { if (!isRunning) refreshDevices(); }, 5000);
+  document.getElementById('csv-input').addEventListener('input', parseCSV);
+}
+
+async function fetchConfig() {
+  try {
+    const res = await fetch('/api/config');
+    config = await res.json();
+    if (config.wifi?.ssid) {
+      document.getElementById('wifi-badge').style.display = 'inline-flex';
+      document.getElementById('wifi-ssid').textContent = config.wifi.ssid;
+    }
+  } catch {}
+}
+
+// ─── Devices ──────────────────────────────────────────────
+
+async function refreshDevices() {
+  try {
+    const res = await fetch('/api/devices');
+    const data = await res.json();
+    devices = data.devices || [];
+    renderDevices();
+    if (selectedMode === 'square-setup') parseCSV();
+  } catch {}
+}
+
+function renderDevices() {
+  const grid = document.getElementById('device-grid');
+  document.getElementById('device-count').textContent = devices.length ? `(${devices.length})` : '';
+
+  if (devices.length === 0) {
+    grid.innerHTML = `<div class="no-devices"><div class="big-icon">🔌</div><div>No iPads detected via USB</div><button class="refresh-btn" onclick="refreshDevices()">↻ Refresh</button></div>`;
+    updateBtn(); return;
+  }
+
+  const connEcids = new Set(devices.map(d => d.ecid));
+  for (const e of selectedEcids) { if (!connEcids.has(e)) selectedEcids.delete(e); }
+
+  // In square mode, auto-select devices that match CSV (but also allow manual clicks)
+  if (selectedMode === 'square-setup') {
+    for (const d of devices) {
+      const match = csvData.find(c =>
+        (c.serial.toLowerCase() === (d.serial||'').toLowerCase()) ||
+        (c.serial.toLowerCase() === (d.ecid||'').toLowerCase())
+      );
+      if (match) selectedEcids.add(d.ecid);
+    }
+  }
+
+  grid.innerHTML = devices.map(d => {
+    const sel = selectedEcids.has(d.ecid);
+    const match = selectedMode === 'square-setup'
+      ? csvData.find(c =>
+          (c.serial.toLowerCase() === (d.serial||'').toLowerCase()) ||
+          (c.serial.toLowerCase() === (d.ecid||'').toLowerCase())
+        )
+      : null;
+    return `
+      <div class="device-card ${sel?'selected':''}" onclick="toggleDevice('${d.ecid}')" data-ecid="${d.ecid}">
+        <div class="check">${sel?'✓':''}</div>
+        <div class="device-name">${esc(d.name||'iPad')}</div>
+        <div class="device-meta">
+          ${d.serial?'Serial: '+esc(d.serial)+'<br>':''}
+          ${d.model?'Model: '+esc(d.model)+'<br>':''}
+          ECID: ${esc(d.ecid)}
+          ${match ? '<br><span style="color:var(--purple)">Code: '+esc(match.deviceCode)+'</span>' : ''}
+        </div>
+      </div>`;
+  }).join('');
+  updateBtn();
+}
+
+function toggleDevice(ecid) {
+  if (isRunning) return;
+  if (selectedEcids.has(ecid)) selectedEcids.delete(ecid); else selectedEcids.add(ecid);
+  renderDevices();
+}
+
+// ─── Mode ─────────────────────────────────────────────────
+
+function selectMode(mode) {
+  if (isRunning) return;
+  selectedMode = mode;
+  document.querySelectorAll('.mode-card').forEach(c => c.classList.toggle('selected', c.dataset.mode === mode));
+
+  document.getElementById('csv-section').style.display = mode === 'square-setup' ? 'block' : 'none';
+  document.getElementById('match-section').style.display = mode === 'square-setup' && csvData.length ? 'block' : 'none';
+
+  if (mode === 'square-setup') parseCSV();
+  renderDevices();
+  updateBtn();
+}
+
+// ─── CSV ──────────────────────────────────────────────────
+
+function handleFileUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    document.getElementById('csv-input').value = ev.target.result;
+    parseCSV();
+  };
+  reader.readAsText(file);
+}
+
+function parseCSV() {
+  const raw = document.getElementById('csv-input').value.trim();
+  const info = document.getElementById('csv-info');
+  csvData = [];
+
+  if (!raw) { info.textContent = ''; updateMatchTable(); updateBtn(); return; }
+
+  const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) { info.textContent = 'Need header + at least 1 row'; updateMatchTable(); updateBtn(); return; }
+
+  const header = lines[0].toLowerCase().split(',').map(c => c.trim());
+  const sIdx = header.findIndex(c => c === 'serial' || c === 'serial_number' || c === 'serialnumber');
+  const cIdx = header.findIndex(c => c === 'device_code' || c === 'devicecode' || c === 'code');
+
+  if (sIdx === -1 || cIdx === -1) {
+    info.textContent = '⚠ CSV needs "serial" and "device_code" columns';
+    info.style.color = 'var(--red)';
+    updateMatchTable(); updateBtn(); return;
+  }
+
+  for (let i = 1; i < lines.length; i++) {
+    const parts = lines[i].split(',').map(c => c.trim());
+    if (parts[sIdx] && parts[cIdx]) {
+      csvData.push({ serial: parts[sIdx], deviceCode: parts[cIdx] });
+    }
+  }
+
+  info.style.color = 'var(--green)';
+  info.textContent = `✓ ${csvData.length} entries parsed`;
+  updateMatchTable();
+  renderDevices();
+  updateBtn();
+}
+
+function loadTemplate() {
+  const textarea = document.getElementById('csv-input');
+  let rows = 'serial,device_code\n';
+  if (devices.length > 0) {
+    // Pre-fill with connected device serials (or ECIDs if no serial)
+    for (const d of devices) {
+      const id = d.serial || d.ecid;
+      rows += `${id},ENTER-CODE-HERE\n`;
+    }
+  } else {
+    rows += 'DMXXXXXXXXXX1,123456789012\nDMXXXXXXXXXX2,123456789013\nDMXXXXXXXXXX3,123456789014\n';
+  }
+  textarea.value = rows;
+  parseCSV();
+}
+
+function updateMatchTable() {
+  const section = document.getElementById('match-section');
+  const tbody = document.getElementById('match-body');
+
+  if (!csvData.length || selectedMode !== 'square-setup') { section.style.display = 'none'; return; }
+
+  section.style.display = 'block';
+  tbody.innerHTML = csvData.map(c => {
+    const dev = devices.find(d =>
+      (d.serial && d.serial.toLowerCase() === c.serial.toLowerCase()) ||
+      (d.ecid && d.ecid.toLowerCase() === c.serial.toLowerCase())
+    );
+    if (dev) {
+      return `<tr class="matched"><td>${esc(c.serial)}</td><td><code>${esc(c.deviceCode)}</code></td><td>${esc(dev.name)}</td><td style="color:var(--green)">Connected</td></tr>`;
+    } else {
+      return `<tr class="unmatched"><td>${esc(c.serial)}</td><td><code>${esc(c.deviceCode)}</code></td><td>—</td><td style="color:var(--red)">Not connected</td></tr>`;
+    }
+  }).join('');
+}
+
+// ─── Button ───────────────────────────────────────────────
+
+function updateBtn() {
+  const btn = document.getElementById('start-btn');
+  const hint = document.getElementById('action-hint');
+
+  if (selectedMode === 'square-setup') {
+    const matchCount = csvData.filter(c => devices.find(d =>
+      (d.serial && d.serial.toLowerCase() === c.serial.toLowerCase()) ||
+      (d.ecid && d.ecid.toLowerCase() === c.serial.toLowerCase())
+    )).length;
+    btn.disabled = matchCount === 0 || isRunning;
+    btn.className = `start-btn square`;
+    btn.textContent = isRunning ? 'Running...' : matchCount ? `Enter Codes on ${matchCount} Device${matchCount>1?'s':''}` : 'Enter Device Codes';
+    hint.textContent = matchCount === 0 ? 'Paste a CSV with serials matching connected devices' : `${matchCount} of ${csvData.length} CSV rows match connected iPads`;
+    return;
+  }
+
+  const count = selectedEcids.size;
+  btn.disabled = count === 0 || isRunning;
+  if (isRunning) { btn.textContent = 'Running...'; hint.textContent = ''; }
+  else if (count === 0) { btn.textContent = 'Start'; hint.textContent = 'Select at least one device'; }
+  else {
+    const label = selectedMode === 'full-reset' ? 'Reset + Provision' : 'Provision';
+    btn.textContent = `${label} ${count} Device${count>1?'s':''}`;
+    btn.className = `start-btn ${selectedMode==='full-reset'?'destructive':''}`;
+    hint.textContent = selectedMode === 'full-reset' ? '⚠ This will erase all data (eSIM preserved)' : 'Devices must be at the Setup Assistant screen';
+  }
+}
+
+// ─── Start ────────────────────────────────────────────────
+
+async function startAction() {
+  if (isRunning) return;
+
+  if (selectedMode === 'square-setup') {
+    return startSquare();
+  }
+
+  if (selectedMode === 'full-reset') {
+    if (!confirm(`FACTORY ERASE ${selectedEcids.size} device(s)?\neSIM will be preserved.`)) return;
+  }
+
+  isRunning = true; updateBtn();
+  show('progress-section'); show('log-section');
+
+  try {
+    const res = await fetch('/api/provision', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ ecids: [...selectedEcids], mode: selectedMode, eraseMethod: config.hasSimpleMdmKey ? 'simplemdm' : 'cfgutil' }),
+    });
+    const data = await res.json();
+    if (!res.ok) { addLog('error', data.error); isRunning = false; updateBtn(); }
+    else addLog('info', data.message);
+  } catch (err) { addLog('error', err.message); isRunning = false; updateBtn(); }
+}
+
+async function startSquare() {
+  const matched = csvData.filter(c => devices.find(d =>
+    (d.serial && d.serial.toLowerCase() === c.serial.toLowerCase()) ||
+    (d.ecid && d.ecid.toLowerCase() === c.serial.toLowerCase())
+  ));
+  if (!matched.length) return;
+
+  isRunning = true; updateBtn();
+  show('progress-section'); show('log-section');
+
+  try {
+    const res = await fetch('/api/square', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ assignments: matched }),
+    });
+    const data = await res.json();
+    if (!res.ok) { addLog('error', data.error); isRunning = false; updateBtn(); }
+    else {
+      addLog('info', data.message);
+      if (data.unmatched?.length) addLog('warn', `Unmatched serials: ${data.unmatched.join(', ')}`);
+    }
+  } catch (err) { addLog('error', err.message); isRunning = false; updateBtn(); }
+}
+
+// ─── SSE ──────────────────────────────────────────────────
+
+function connectSSE() {
+  const sse = new EventSource('/api/events');
+  sse.onopen = () => { document.getElementById('conn-dot').style.background='var(--green)'; document.getElementById('conn-text').textContent='Connected'; };
+  sse.onerror = () => { document.getElementById('conn-dot').style.background='var(--red)'; document.getElementById('conn-text').textContent='Disconnected'; };
+  sse.onmessage = (e) => { try { handleEvent(JSON.parse(e.data)); } catch {} };
+}
+
+function handleEvent(msg) {
+  switch (msg.type) {
+    case 'job-start': createProgressCard(msg.ecid, msg.steps, msg.mode); addLog('info', `Started: ${deviceLabel(msg.ecid)} [${msg.mode}]`); break;
+    case 'step':
+      updateStep(msg.ecid, msg.stepId, msg.state, msg.detail);
+      if (msg.state==='done') addLog('success', `${stepLabel(msg.stepId)} ✓`);
+      if (msg.state==='error') addLog('error', `${stepLabel(msg.stepId)} — ${msg.detail}`);
+      if (msg.state==='warn') addLog('warn', `${stepLabel(msg.stepId)} — ${msg.detail}`);
+      break;
+    case 'countdown': updateCountdown(msg.ecid, msg.stepId, msg.remaining); break;
+    case 'ai-action':
+      addLog('info', `🤖 [${deviceLabel(msg.ecid)}] Step ${msg.iteration}: ${msg.description}`);
+      appendAiAction(msg.ecid, msg.iteration, msg.action, msg.description);
+      break;
+    case 'batch-info':
+      addLog('info', `📦 ${msg.message}`);
+      break;
+    case 'batch-progress':
+      addLog('info', `📦 ${msg.message}`);
+      break;
+    case 'batch-done':
+      addLog('success', `📦 ${msg.message}`);
+      checkDone();
+      break;
+    case 'job-done': finishCard(msg.ecid,'done'); addLog('success',`✅ ${deviceLabel(msg.ecid)} — COMPLETE`); checkDone(); break;
+    case 'job-error': finishCard(msg.ecid,'error'); addLog('error',`❌ ${deviceLabel(msg.ecid)} — ${msg.error}`); checkDone(); break;
+  }
+}
+
+function checkDone() {
+  const cards = document.querySelectorAll('.progress-card');
+  if (!cards.length) return;
+  if ([...cards].every(c => c.dataset.status==='done'||c.dataset.status==='error')) { isRunning = false; updateBtn(); }
+}
+
+// ─── Progress Cards ───────────────────────────────────────
+
+function createProgressCard(ecid, steps, mode) {
+  const grid = document.getElementById('progress-grid');
+  const old = grid.querySelector(`[data-ecid="${ecid}"]`); if (old) old.remove();
+  const d = devices.find(d=>d.ecid===ecid)||{name:'iPad',ecid};
+  const card = document.createElement('div');
+  card.className='progress-card'; card.dataset.ecid=ecid; card.dataset.status='running';
+  const modeLabel = mode==='square-setup' ? 'Square POS' : mode==='full-reset' ? 'Full Reset' : 'Provision';
+  card.innerHTML = `
+    <div class="pc-header">
+      <span class="pc-name">${esc(d.name)}${d.serial?' — '+esc(d.serial):''}</span>
+      <span class="pc-status running" id="status-${ecid}">${modeLabel}</span>
+    </div>
+    <ul class="step-list" id="steps-${ecid}">${steps.map(s=>`
+      <li id="step-${ecid}-${s.id}" class="step-pending"><span class="step-icon">○</span><span class="step-label">${esc(s.label)}</span><span class="step-detail" id="detail-${ecid}-${s.id}"></span></li>`).join('')}
+    </ul>`;
+  grid.prepend(card);
+}
+
+function updateStep(ecid, stepId, state, detail) {
+  const li = document.getElementById(`step-${ecid}-${stepId}`); if (!li) return;
+  li.className = `step-${state}`;
+  const icon = li.querySelector('.step-icon');
+  if (state==='running') icon.innerHTML='<div class="spinner"></div>';
+  else if (state==='done') icon.textContent='✓';
+  else if (state==='warn') icon.textContent='⚠';
+  else if (state==='error') icon.textContent='✗';
+  else icon.textContent='○';
+  const det = document.getElementById(`detail-${ecid}-${stepId}`);
+  if (det && detail) det.textContent = detail;
+}
+
+function updateCountdown(ecid, stepId, remaining) {
+  const det = document.getElementById(`detail-${ecid}-${stepId}`);
+  if (det) det.textContent = `${remaining}s`;
+}
+
+function finishCard(ecid, status) {
+  const card = document.querySelector(`.progress-card[data-ecid="${ecid}"]`); if (!card) return;
+  card.dataset.status = status;
+  const s = document.getElementById(`status-${ecid}`);
+  if (s) { s.className = `pc-status ${status}`; s.textContent = status==='done'?'Complete':'Failed'; }
+}
+
+// ─── Log ──────────────────────────────────────────────────
+
+function addLog(level, msg) {
+  const panel = document.getElementById('log-panel');
+  const line = document.createElement('div');
+  line.className = `log-line ${level}`;
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  panel.appendChild(line);
+  panel.scrollTop = panel.scrollHeight;
+}
+
+// ─── Helpers ──────────────────────────────────────────────
+
+function esc(s) { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+function show(id) { document.getElementById(id).style.display='block'; }
+function deviceLabel(ecid) { const d=devices.find(d=>d.ecid===ecid); return d?`${d.name} (${d.serial||ecid})`:ecid; }
+function stepLabel(id) { return {
+  'wifi-gen':'WiFi profile','erase':'Erase','reboot':'Reboot','pair':'Pair','wifi-push':'WiFi push','prepare':'Setup panes','settle':'Settle',
+  'sq-connect':'Appium connect','sq-launch':'Launch Square','sq-ai':'AI Agent'
+}[id]||id; }
+
+const aiActionIcons = { tap:'👆', type:'⌨️', tap_and_type:'⌨️', press_button:'⏎', wait:'⏳', swipe:'👉', done:'✅', error:'❌' };
+
+function appendAiAction(ecid, iteration, actionType, description) {
+  // Add a sub-item to the AI step in the progress card
+  let feed = document.getElementById(`ai-feed-${ecid}`);
+  if (!feed) {
+    const stepLi = document.getElementById(`step-${ecid}-sq-ai`);
+    if (!stepLi) return;
+    feed = document.createElement('div');
+    feed.id = `ai-feed-${ecid}`;
+    feed.style.cssText = 'margin-top:6px;padding-left:32px;font-size:12px;color:var(--text-dim);max-height:160px;overflow-y:auto;';
+    stepLi.appendChild(feed);
+  }
+  const icon = aiActionIcons[actionType] || '🔹';
+  const line = document.createElement('div');
+  line.style.cssText = 'padding:2px 0;border-bottom:1px solid var(--border);';
+  line.innerHTML = `<span style="opacity:0.5">${iteration}.</span> ${icon} ${esc(description)}`;
+  feed.appendChild(line);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+init();
+</script>
+</body>
+</html>
