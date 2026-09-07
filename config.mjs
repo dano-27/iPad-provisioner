@@ -51,4 +51,8 @@ export const CONFIG = {
   // Each session uses ~200MB RAM + CPU. For a Mac with 16GB RAM,
   // 5 is safe. For 32GB+ or Apple Silicon, try 8-10.
   appiumConcurrency: 5,
+
+  // ── pymobiledevice3 (for Developer Mode auto-enable) ────────
+  // pip3 install pymobiledevice3
+  pymobiledevice3: '/Library/Frameworks/Python.framework/Versions/3.12/bin/pymobiledevice3',
 };

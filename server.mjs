@@ -16,7 +16,6 @@ try {
 // ╚══════════════════════════════════════════════════════════════════╝
 
 import http from 'http';
-import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { EventEmitter } from 'events';
@@ -147,10 +146,14 @@ const SQUARE_BUNDLE_ID = CONFIG.squareBundleId || 'com.squareup.square';
 const APPIUM_PORT_NUM = CONFIG.appiumPort || 4723;
 
 const STEPS_SQUARE = [
+  { id: 'sq-devmode', label: 'Check Developer Mode' },
   { id: 'sq-connect', label: 'Connect to device via Appium' },
   { id: 'sq-launch',  label: 'Launch Square POS' },
   { id: 'sq-ai',      label: 'AI navigating Square POS...' },
 ];
+
+// Path to pymobiledevice3 — auto-detected or configured
+const PYMOBILE = CONFIG.pymobiledevice3 || '/Library/Frameworks/Python.framework/Versions/3.12/bin/pymobiledevice3';
 
 async function runSquareSetup(device, deviceCode) {
   const { ecid, udid, name, serial } = device;
@@ -167,6 +170,78 @@ async function runSquareSetup(device, deviceCode) {
 
   let browser;
   try {
+    // ── Check Developer Mode ─────────────────────────────────
+    setStep('sq-devmode', 'running', 'Checking Developer Mode...');
+    const { execFile } = await import('child_process');
+    const { promisify } = await import('util');
+    const execFileAsync = promisify(execFile);
+
+    let devModeEnabled = false;
+    try {
+      const { stdout } = await execFileAsync(PYMOBILE, [
+        'amfi', 'developer-mode-status', '--udid', udid,
+      ], { timeout: 10000 });
+      devModeEnabled = stdout.trim().toLowerCase() === 'true';
+    } catch (e) {
+      console.log(`[DevMode] Status check failed for ${udid}: ${e.message}`);
+    }
+
+    if (devModeEnabled) {
+      setStep('sq-devmode', 'done', 'Developer Mode is ON');
+      console.log(`[DevMode] ${udid}: Developer Mode already enabled ✓`);
+    } else {
+      // Try to enable Developer Mode automatically
+      setStep('sq-devmode', 'running', 'Enabling Developer Mode...');
+      console.log(`[DevMode] ${udid}: Developer Mode is OFF — attempting to enable...`);
+
+      try {
+        await execFileAsync(PYMOBILE, [
+          'amfi', 'enable-developer-mode', '--udid', udid,
+        ], { timeout: 60000 });
+
+        // Wait for device to reboot and come back
+        setStep('sq-devmode', 'running', 'Device rebooting — waiting...');
+        console.log(`[DevMode] ${udid}: Enable command sent, waiting for reboot...`);
+
+        // Wait up to 90 seconds for the device to come back
+        let rebooted = false;
+        for (let i = 0; i < 18; i++) {
+          await new Promise(r => setTimeout(r, 5000));
+          try {
+            const { stdout } = await execFileAsync(PYMOBILE, [
+              'amfi', 'developer-mode-status', '--udid', udid,
+            ], { timeout: 10000 });
+            if (stdout.trim().toLowerCase() === 'true') {
+              rebooted = true;
+              break;
+            }
+          } catch { /* device still rebooting */ }
+        }
+
+        if (rebooted) {
+          setStep('sq-devmode', 'done', 'Developer Mode enabled ✓');
+          console.log(`[DevMode] ${udid}: Developer Mode enabled successfully`);
+        } else {
+          setStep('sq-devmode', 'error', 'Developer Mode could not be enabled — enable manually on the iPad');
+          throw new Error(
+            'Developer Mode could not be auto-enabled. ' +
+            'On the iPad: Settings → Privacy & Security → Developer Mode → ON. ' +
+            'Also enable: Settings → Developer → Enable UI Automation.'
+          );
+        }
+      } catch (enableErr) {
+        if (enableErr.message.includes('Developer Mode could not be auto-enabled')) throw enableErr;
+        // pymobiledevice3 may fail if passcode is set
+        console.log(`[DevMode] ${udid}: Auto-enable failed: ${enableErr.message}`);
+        setStep('sq-devmode', 'error', 'Enable Developer Mode manually on iPad');
+        throw new Error(
+          'Developer Mode is OFF and could not be auto-enabled (device may have a passcode). ' +
+          'On the iPad: Settings → Privacy & Security → Developer Mode → ON. ' +
+          'Also enable: Settings → Developer → Enable UI Automation.'
+        );
+      }
+    }
+
     // ── Connect via Appium ────────────────────────────────────
     setStep('sq-connect', 'running');
     const { remote } = await import('webdriverio');
