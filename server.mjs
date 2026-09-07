@@ -145,6 +145,28 @@ async function runProvision(device, mode, eraseMethod, simpleMdmId) {
 const SQUARE_BUNDLE_ID = CONFIG.squareBundleId || 'com.squareup.square';
 const APPIUM_PORT_NUM = CONFIG.appiumPort || 4723;
 
+// ── WDA Port Pool ─────────────────────────────────────────────
+// Each concurrent device needs its own wdaLocalPort to avoid conflicts.
+// Ports are allocated from a pool and released when the session ends.
+const WDA_PORT_BASE = 8100;
+const WDA_PORT_POOL_SIZE = 30; // supports up to 30 concurrent devices
+const wdaPortsInUse = new Set();
+
+function allocateWdaPort() {
+  for (let i = 0; i < WDA_PORT_POOL_SIZE; i++) {
+    const port = WDA_PORT_BASE + i;
+    if (!wdaPortsInUse.has(port)) {
+      wdaPortsInUse.add(port);
+      return port;
+    }
+  }
+  throw new Error(`No WDA ports available (all ${WDA_PORT_POOL_SIZE} in use)`);
+}
+
+function releaseWdaPort(port) {
+  wdaPortsInUse.delete(port);
+}
+
 const STEPS_SQUARE = [
   { id: 'sq-devmode', label: 'Pre-flight: passcode + Developer Mode' },
   { id: 'sq-connect', label: 'Connect to device via Appium' },
@@ -169,7 +191,10 @@ async function runSquareSetup(device, deviceCode) {
   };
 
   let browser;
+  let wdaPort;
   try {
+    wdaPort = allocateWdaPort();
+    console.log(`[${serial || udid}] Allocated WDA port: ${wdaPort}`);
     // ── Pre-flight: passcode + Developer Mode ─────────────────
     setStep('sq-devmode', 'running', 'Checking device readiness...');
     const { execFile } = await import('child_process');
@@ -290,6 +315,7 @@ async function runSquareSetup(device, deviceCode) {
         'appium:newCommandTimeout': 180,
         'appium:usePrebuiltWDA': true,
         'appium:useNewWDA': true,
+        'appium:wdaLocalPort': wdaPort,
         'appium:showXcodeLog': true,
         'appium:wdaStartupRetries': 3,
         'appium:wdaStartupRetryInterval': 15000,
@@ -457,6 +483,7 @@ async function runSquareSetup(device, deviceCode) {
     if (browser) {
       try { await browser.deleteSession(); } catch {}
     }
+    if (wdaPort) releaseWdaPort(wdaPort);
   }
 }
 
