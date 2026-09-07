@@ -146,7 +146,7 @@ const SQUARE_BUNDLE_ID = CONFIG.squareBundleId || 'com.squareup.square';
 const APPIUM_PORT_NUM = CONFIG.appiumPort || 4723;
 
 const STEPS_SQUARE = [
-  { id: 'sq-devmode', label: 'Check Developer Mode' },
+  { id: 'sq-devmode', label: 'Pre-flight: passcode + Developer Mode' },
   { id: 'sq-connect', label: 'Connect to device via Appium' },
   { id: 'sq-launch',  label: 'Launch Square POS' },
   { id: 'sq-ai',      label: 'AI navigating Square POS...' },
@@ -170,12 +170,29 @@ async function runSquareSetup(device, deviceCode) {
 
   let browser;
   try {
-    // ── Check Developer Mode ─────────────────────────────────
-    setStep('sq-devmode', 'running', 'Checking Developer Mode...');
+    // ── Pre-flight: passcode + Developer Mode ─────────────────
+    setStep('sq-devmode', 'running', 'Checking device readiness...');
     const { execFile } = await import('child_process');
     const { promisify } = await import('util');
     const execFileAsync = promisify(execFile);
 
+    // Check if passcode is set
+    let hasPasscode = false;
+    try {
+      const { stdout } = await execFileAsync(PYMOBILE, [
+        'lockdown', 'info', '--udid', udid,
+      ], { timeout: 10000 });
+      hasPasscode = stdout.includes('"PasswordProtected": true');
+      console.log(`[PreFlight] ${udid}: Passcode ${hasPasscode ? 'SET ⚠' : 'not set ✓'}`);
+    } catch (e) {
+      console.log(`[PreFlight] ${udid}: Could not check passcode: ${e.message}`);
+    }
+
+    if (hasPasscode) {
+      console.log(`[PreFlight] ${udid}: ⚠ Passcode detected — auto-enable may require manual confirmation`);
+    }
+
+    // Check Developer Mode status
     let devModeEnabled = false;
     try {
       const { stdout } = await execFileAsync(PYMOBILE, [
@@ -183,16 +200,16 @@ async function runSquareSetup(device, deviceCode) {
       ], { timeout: 10000 });
       devModeEnabled = stdout.trim().toLowerCase() === 'true';
     } catch (e) {
-      console.log(`[DevMode] Status check failed for ${udid}: ${e.message}`);
+      console.log(`[PreFlight] ${udid}: Developer Mode check failed: ${e.message}`);
     }
 
     if (devModeEnabled) {
-      setStep('sq-devmode', 'done', 'Developer Mode is ON');
-      console.log(`[DevMode] ${udid}: Developer Mode already enabled ✓`);
+      setStep('sq-devmode', 'done', `Developer Mode ON${hasPasscode ? ' (passcode set — UI Automation must be ON)' : ''}`);
+      console.log(`[PreFlight] ${udid}: Developer Mode already enabled ✓`);
     } else {
       // Try to enable Developer Mode automatically
       setStep('sq-devmode', 'running', 'Enabling Developer Mode...');
-      console.log(`[DevMode] ${udid}: Developer Mode is OFF — attempting to enable...`);
+      console.log(`[PreFlight] ${udid}: Developer Mode OFF — enabling...`);
 
       try {
         await execFileAsync(PYMOBILE, [
@@ -200,10 +217,9 @@ async function runSquareSetup(device, deviceCode) {
         ], { timeout: 60000 });
 
         // Wait for device to reboot and come back
-        setStep('sq-devmode', 'running', 'Device rebooting — waiting...');
-        console.log(`[DevMode] ${udid}: Enable command sent, waiting for reboot...`);
+        setStep('sq-devmode', 'running', 'Device rebooting — waiting for it to come back...');
+        console.log(`[PreFlight] ${udid}: Reboot triggered, waiting...`);
 
-        // Wait up to 90 seconds for the device to come back
         let rebooted = false;
         for (let i = 0; i < 18; i++) {
           await new Promise(r => setTimeout(r, 5000));
@@ -219,25 +235,39 @@ async function runSquareSetup(device, deviceCode) {
         }
 
         if (rebooted) {
-          setStep('sq-devmode', 'done', 'Developer Mode enabled ✓');
-          console.log(`[DevMode] ${udid}: Developer Mode enabled successfully`);
+          setStep('sq-devmode', 'done', 'Developer Mode auto-enabled ✓');
+          console.log(`[PreFlight] ${udid}: Developer Mode enabled successfully`);
+        } else if (hasPasscode) {
+          setStep('sq-devmode', 'error', 'Passcode blocking auto-enable — confirm on iPad screen');
+          throw new Error(
+            'Developer Mode enable requires manual confirmation because a passcode is set. ' +
+            'Either: (1) Remove the passcode first, then retry, or ' +
+            '(2) On the iPad after reboot: confirm the Developer Mode prompt and enter passcode.'
+          );
         } else {
-          setStep('sq-devmode', 'error', 'Developer Mode could not be enabled — enable manually on the iPad');
+          setStep('sq-devmode', 'error', 'Developer Mode could not be enabled');
           throw new Error(
             'Developer Mode could not be auto-enabled. ' +
-            'On the iPad: Settings → Privacy & Security → Developer Mode → ON. ' +
-            'Also enable: Settings → Developer → Enable UI Automation.'
+            'On the iPad: Settings → Privacy & Security → Developer Mode → ON.'
           );
         }
       } catch (enableErr) {
-        if (enableErr.message.includes('Developer Mode could not be auto-enabled')) throw enableErr;
-        // pymobiledevice3 may fail if passcode is set
-        console.log(`[DevMode] ${udid}: Auto-enable failed: ${enableErr.message}`);
+        if (enableErr.message.includes('requires manual confirmation') ||
+            enableErr.message.includes('could not be auto-enabled')) throw enableErr;
+        console.log(`[PreFlight] ${udid}: Auto-enable failed: ${enableErr.message}`);
+
+        if (hasPasscode) {
+          setStep('sq-devmode', 'error', 'Remove passcode before provisioning, or enable Developer Mode manually');
+          throw new Error(
+            'Cannot auto-enable Developer Mode on a passcode-protected device. ' +
+            'Remove the passcode (Settings → Face ID & Passcode → Turn Passcode Off), ' +
+            'then retry. MDM can push the passcode policy after provisioning.'
+          );
+        }
         setStep('sq-devmode', 'error', 'Enable Developer Mode manually on iPad');
         throw new Error(
-          'Developer Mode is OFF and could not be auto-enabled (device may have a passcode). ' +
-          'On the iPad: Settings → Privacy & Security → Developer Mode → ON. ' +
-          'Also enable: Settings → Developer → Enable UI Automation.'
+          'Developer Mode is OFF and could not be auto-enabled. ' +
+          'On the iPad: Settings → Privacy & Security → Developer Mode → ON.'
         );
       }
     }
