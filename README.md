@@ -32,11 +32,31 @@ chmod +x setup.sh start.sh
 
 ## iPad Requirements
 
-Each iPad must have:
-1. **Developer Mode** enabled: Settings → Privacy & Security → Developer Mode → ON (requires restart)
-2. **Enable UI Automation** ON: Settings → Developer → Enable UI Automation
-3. **Square POS** app installed (via MDM or App Store)
-4. Connected via **USB** to the Mac
+Each iPad needs:
+1. **No passcode** during provisioning (for fully automated Developer Mode + UI Automation)
+2. **Square POS** app installed (via MDM or App Store)
+3. Connected via **USB** to the Mac
+
+> **Zero-touch flow:** If iPads have no passcode, Developer Mode is auto-enabled via `pymobiledevice3`. MDM can push a passcode policy *after* provisioning completes.
+>
+> **If a passcode is set:** Developer Mode and UI Automation must be enabled manually on each iPad before running. The provisioner will detect this and show instructions.
+
+## Performance
+
+Benchmarked on iPad 8th Gen (iPadOS 26.5):
+
+| Scenario | Time per iPad | 90 iPads (5 concurrent) |
+|----------|--------------|------------------------|
+| **First run** (Developer Mode + WDA deploy + sign-in) | ~2 min 20 sec | ~42 min |
+| **Re-provision** (Developer Mode already on) | ~1 min 30 sec | ~27 min |
+
+Breakdown of a first run:
+- Pre-flight (passcode + Developer Mode check): ~10s
+- WDA fresh deploy (`useNewWDA`): ~30-45s
+- Square POS launch: ~3s
+- Sign-in flow (element finding + typing): ~20s
+- Verification (AI vision): ~5s
+- Pauses and waits: ~30s
 
 ## Configuration
 
