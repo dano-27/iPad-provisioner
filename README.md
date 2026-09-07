@@ -43,16 +43,33 @@ Each iPad needs:
 
 ## Performance
 
-Benchmarked on iPad 8th Gen (iPadOS 26.5):
+Benchmarked on iPad 8th Gen (iPadOS 26.5), Mac with M1 Max (64GB RAM, 10 cores):
 
-| Scenario | Time per iPad | 90 iPads (5 concurrent) |
-|----------|--------------|------------------------|
-| **First run** (Developer Mode + WDA deploy + sign-in) | ~2 min 20 sec | ~42 min |
-| **Re-provision** (Developer Mode already on) | ~1 min 30 sec | ~27 min |
+| Scenario | Time per iPad |
+|----------|--------------|
+| **First run** (Developer Mode + WDA deploy + sign-in) | ~2 min 20 sec |
+| **Re-provision** (Developer Mode already on) | ~1 min 30 sec |
 
-Breakdown of a first run:
+### Fleet estimates for 90 iPads
+
+| Concurrency | Batches | First Run | Re-provision |
+|------------|---------|-----------|-------------|
+| 5 | 18 | ~42 min | ~27 min |
+| **10 (default)** | **9** | **~21 min** | **~14 min** |
+| 15 | 6 | ~14 min | ~9 min |
+
+Each concurrent device gets its own WDA port (8100, 8101, 8102, ...) from a managed pool. Tune `appiumConcurrency` in `config.mjs` based on your Mac:
+
+| Mac RAM | Recommended Concurrency |
+|---------|------------------------|
+| 8 GB | 3 |
+| 16 GB | 5 |
+| 32 GB | 8–10 |
+| 64 GB+ | 10–15 |
+
+### Timing breakdown (per device)
 - Pre-flight (passcode + Developer Mode check): ~10s
-- WDA fresh deploy (`useNewWDA`): ~30-45s
+- WDA fresh deploy (`useNewWDA`): ~30–45s
 - Square POS launch: ~3s
 - Sign-in flow (element finding + typing): ~20s
 - Verification (AI vision): ~5s
