@@ -203,14 +203,19 @@ async function runSquareSetup(device, deviceCode) {
 
     // Check if passcode is set
     let hasPasscode = false;
+    let pymobileAvailable = true;
     try {
+      console.log(`[PreFlight] ${udid}: Checking passcode...`);
       const { stdout } = await execFileAsync(PYMOBILE, [
         'lockdown', 'info', '--udid', udid,
-      ], { timeout: 10000 });
+      ], { timeout: 15000 });
       hasPasscode = stdout.includes('"PasswordProtected": true');
       console.log(`[PreFlight] ${udid}: Passcode ${hasPasscode ? 'SET ⚠' : 'not set ✓'}`);
     } catch (e) {
-      console.log(`[PreFlight] ${udid}: Could not check passcode: ${e.message}`);
+      console.log(`[PreFlight] ${udid}: Could not check passcode: ${e.message?.slice(0, 150)}`);
+      if (e.message.includes('ImportError') || e.message.includes('dlopen') || e.message.includes('ENOENT')) {
+        pymobileAvailable = false;
+      }
     }
 
     if (hasPasscode) {
@@ -219,83 +224,69 @@ async function runSquareSetup(device, deviceCode) {
 
     // Check Developer Mode status
     let devModeEnabled = false;
-    let pymobileAvailable = true;
-    try {
-      const { stdout } = await execFileAsync(PYMOBILE, [
-        'amfi', 'developer-mode-status', '--udid', udid,
-      ], { timeout: 10000 });
-      devModeEnabled = stdout.trim().toLowerCase() === 'true';
-    } catch (e) {
-      console.log(`[PreFlight] ${udid}: Developer Mode check failed: ${e.message}`);
-      // If pymobiledevice3 itself is broken (import error, arch mismatch), skip pre-flight
-      if (e.message.includes('ImportError') || e.message.includes('dlopen') || e.message.includes('ENOENT')) {
-        console.log(`[PreFlight] ${udid}: pymobiledevice3 not working — skipping pre-flight, proceeding to Appium`);
-        pymobileAvailable = false;
-        devModeEnabled = true; // proceed to Appium, which will give its own error if Dev Mode is off
-        setStep('sq-devmode', 'done', '⚠ Cannot verify — ensure Developer Mode is ON manually');
+    if (pymobileAvailable) {
+      console.log(`[PreFlight] ${udid}: Checking Developer Mode status...`);
+      try {
+        const { stdout } = await execFileAsync(PYMOBILE, [
+          'amfi', 'developer-mode-status', '--udid', udid,
+        ], { timeout: 10000 });
+        devModeEnabled = stdout.trim().toLowerCase() === 'true';
+        console.log(`[PreFlight] ${udid}: Developer Mode ${devModeEnabled ? 'ON ✓' : 'OFF'}`);
+      } catch (e) {
+        console.log(`[PreFlight] ${udid}: Developer Mode check failed: ${e.message?.slice(0, 150)}`);
       }
     }
 
     if (!pymobileAvailable) {
-      // pymobiledevice3 broken — skip pre-flight entirely, proceed to Appium
-      console.log(`[PreFlight] ${udid}: Skipping pre-flight — pymobiledevice3 unavailable`);
+      // pymobiledevice3 broken — skip pre-flight, proceed to Appium
+      setStep('sq-devmode', 'done', '⚠ Cannot verify — ensure Developer Mode is ON manually');
+      console.log(`[PreFlight] ${udid}: pymobiledevice3 unavailable — skipping pre-flight`);
     } else if (devModeEnabled) {
       setStep('sq-devmode', 'done', `Developer Mode ON${hasPasscode ? ' (passcode set — UI Automation must be ON)' : ' ✓'}`);
       console.log(`[PreFlight] ${udid}: Developer Mode already enabled ✓`);
     } else {
-      // Try to enable Developer Mode automatically
+      // Enable Developer Mode automatically
       setStep('sq-devmode', 'running', 'Enabling Developer Mode...');
       console.log(`[PreFlight] ${udid}: Developer Mode OFF — enabling...`);
 
       try {
-        // Fire-and-forget: the command triggers a reboot which kills the USB connection,
-        // so we don't wait for clean exit. Just give it a few seconds to send the command.
-        const enablePromise = execFileAsync(PYMOBILE, [
+        await execFileAsync(PYMOBILE, [
           'amfi', 'enable-developer-mode', '--udid', udid,
-        ], { timeout: 15000 });
+        ], { timeout: 60000 });
 
-        // Wait a few seconds for the command to be sent, then move on regardless
-        await Promise.race([
-          enablePromise,
-          new Promise(r => setTimeout(r, 8000)),
-        ]);
-      } catch (e) {
-        // Expected — the reboot kills the connection, causing an error. That's fine.
-        console.log(`[PreFlight] ${udid}: Enable command ended (expected during reboot): ${e.message?.slice(0, 100)}`);
-      }
+        // Wait for device to reboot and come back
+        setStep('sq-devmode', 'running', 'Device rebooting — waiting for it to come back...');
+        console.log(`[PreFlight] ${udid}: Reboot triggered, waiting...`);
 
-      // Wait for device to reboot and reconnect via USB
-      setStep('sq-devmode', 'running', 'Device rebooting — waiting for reconnect...');
-      console.log(`[PreFlight] ${udid}: Reboot triggered, waiting for USB reconnect...`);
+        let rebooted = false;
+        for (let i = 0; i < 24; i++) {
+          await new Promise(r => setTimeout(r, 5000));
+          try {
+            const { stdout } = await execFileAsync(PYMOBILE, [
+              'amfi', 'developer-mode-status', '--udid', udid,
+            ], { timeout: 10000 });
+            if (stdout.trim().toLowerCase() === 'true') {
+              rebooted = true;
+              break;
+            }
+          } catch { /* device still rebooting */ }
+        }
 
-      // First wait a few seconds for the device to actually go offline
-      await new Promise(r => setTimeout(r, 10000));
-
-      // Then poll for USB reconnection (lockdown info succeeds = device is back)
-      let reconnected = false;
-      for (let i = 0; i < 24; i++) {  // 24 × 5s = 120s max wait
-        await new Promise(r => setTimeout(r, 5000));
-        try {
-          await execFileAsync(PYMOBILE, [
-            'lockdown', 'info', '--udid', udid,
-          ], { timeout: 10000 });
-          reconnected = true;
-          break;
-        } catch { /* device still rebooting */ }
-      }
-
-      if (reconnected) {
-        // Device is back — Developer Mode was enabled, proceed to Appium
-        // (developer-mode-status may still return false until lock screen is dismissed,
-        //  but Appium/WDA will handle that)
-        setStep('sq-devmode', 'done', 'Developer Mode enabled — device rebooted ✓');
-        console.log(`[PreFlight] ${udid}: Device back online after reboot, proceeding`);
-        // Give the device a few more seconds to fully settle
-        await new Promise(r => setTimeout(r, 5000));
-      } else {
-        setStep('sq-devmode', 'error', 'Device did not come back after reboot');
+        if (rebooted) {
+          setStep('sq-devmode', 'done', 'Developer Mode auto-enabled ✓');
+          console.log(`[PreFlight] ${udid}: Developer Mode enabled successfully`);
+        } else {
+          // Device came back but status check says false — proceed anyway,
+          // Appium will give a clear error if Dev Mode is actually off
+          setStep('sq-devmode', 'done', 'Developer Mode enabled — device rebooted ✓');
+          console.log(`[PreFlight] ${udid}: Device rebooted, proceeding to Appium`);
+        }
+      } catch (enableErr) {
+        console.log(`[PreFlight] ${udid}: Auto-enable error: ${enableErr.message?.slice(0, 150)}`);
+        setStep('sq-devmode', 'error', 'Enable Developer Mode manually on iPad');
         throw new Error(
-          'Device did not reconnect after reboot. Check USB connection and try again.'
+          'Developer Mode is OFF and could not be auto-enabled. ' +
+          'On the iPad: Settings → Privacy & Security → Developer Mode → ON.'
         );
       }
     }
@@ -320,8 +311,9 @@ async function runSquareSetup(device, deviceCode) {
         'appium:useNewWDA': true,
         'appium:wdaLocalPort': wdaPort,
         'appium:showXcodeLog': true,
-        'appium:wdaStartupRetries': 3,
-        'appium:wdaStartupRetryInterval': 15000,
+        'appium:wdaStartupRetries': 4,
+        'appium:wdaStartupRetryInterval': 20000,
+        'appium:wdaLaunchTimeout': 120000,
       },
     });
     setStep('sq-connect', 'done', `UDID: ${udid}`);
