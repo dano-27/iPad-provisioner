@@ -4,3 +4,4 @@ profiles/
 *.log
 .DS_Store
 .env
+.provisioner.pid
