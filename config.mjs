@@ -49,9 +49,8 @@ export const CONFIG = {
 
   // How many iPads to process simultaneously.
   // Each session uses ~200MB RAM + 1 xcodebuild process.
-  // Guideline: 16GB → 5, 32GB → 8-10, 64GB+ → 10-15
-  // Your M1 Max (64GB, 10 cores) can handle 10-15 easily.
-  appiumConcurrency: 10,
+  // Guideline: 16GB → 5, 32GB → 8, 64GB+ → 10-15
+  appiumConcurrency: 8,
 
   // ── pymobiledevice3 (for Developer Mode auto-enable) ────────
   // pip3 install pymobiledevice3
