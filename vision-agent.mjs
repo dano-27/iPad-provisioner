@@ -9,7 +9,7 @@
 import { CONFIG } from './config.mjs';
 
 const MAX_ITERATIONS = 20;
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_MODEL = 'gemini-3.8-flash';
 
 // ─── Gemini API ───────────────────────────────────────────────
 
