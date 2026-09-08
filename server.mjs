@@ -219,6 +219,7 @@ async function runSquareSetup(device, deviceCode) {
 
     // Check Developer Mode status
     let devModeEnabled = false;
+    let pymobileAvailable = true;
     try {
       const { stdout } = await execFileAsync(PYMOBILE, [
         'amfi', 'developer-mode-status', '--udid', udid,
@@ -226,6 +227,13 @@ async function runSquareSetup(device, deviceCode) {
       devModeEnabled = stdout.trim().toLowerCase() === 'true';
     } catch (e) {
       console.log(`[PreFlight] ${udid}: Developer Mode check failed: ${e.message}`);
+      // If pymobiledevice3 itself is broken (import error, arch mismatch), skip pre-flight
+      if (e.message.includes('ImportError') || e.message.includes('dlopen') || e.message.includes('ENOENT')) {
+        console.log(`[PreFlight] ${udid}: pymobiledevice3 not working — skipping pre-flight, proceeding to Appium`);
+        pymobileAvailable = false;
+        devModeEnabled = true; // assume it's on, Appium will fail with a clear error if not
+        setStep('sq-devmode', 'done', 'Pre-flight skipped (pymobiledevice3 unavailable)');
+      }
     }
 
     if (devModeEnabled) {
