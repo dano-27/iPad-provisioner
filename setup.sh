@@ -133,10 +133,16 @@ elif [[ $WARNINGS -gt 0 ]]; then
 else
   echo "  ✅ Setup complete!"
 fi
+
+# Clear macOS quarantine on the app so it opens without Gatekeeper blocking
+if [ -d "$DIR/iPad Provisioner.app" ]; then
+  xattr -cr "$DIR/iPad Provisioner.app" 2>/dev/null
+  echo "  ✅ App quarantine cleared"
+fi
+
 echo ""
 echo "  Next steps:"
 echo "    1. Edit config.mjs — set Gemini API key & WiFi credentials"
-echo "    2. On each iPad: Settings → Developer → Enable UI Automation = ON"
-echo "    3. Run:  ./start.sh"
-echo "    4. Open: http://localhost:3456"
+echo "    2. Double-click 'iPad Provisioner.app' to start"
+echo "    3. Dashboard opens automatically at http://localhost:3456"
 echo ""
