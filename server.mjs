@@ -231,13 +231,16 @@ async function runSquareSetup(device, deviceCode) {
       if (e.message.includes('ImportError') || e.message.includes('dlopen') || e.message.includes('ENOENT')) {
         console.log(`[PreFlight] ${udid}: pymobiledevice3 not working — skipping pre-flight, proceeding to Appium`);
         pymobileAvailable = false;
-        devModeEnabled = true; // assume it's on, Appium will fail with a clear error if not
-        setStep('sq-devmode', 'done', 'Pre-flight skipped (pymobiledevice3 unavailable)');
+        devModeEnabled = true; // proceed to Appium, which will give its own error if Dev Mode is off
+        setStep('sq-devmode', 'done', '⚠ Cannot verify — ensure Developer Mode is ON manually');
       }
     }
 
-    if (devModeEnabled) {
-      setStep('sq-devmode', 'done', `Developer Mode ON${hasPasscode ? ' (passcode set — UI Automation must be ON)' : ''}`);
+    if (!pymobileAvailable) {
+      // pymobiledevice3 broken — skip pre-flight entirely, proceed to Appium
+      console.log(`[PreFlight] ${udid}: Skipping pre-flight — pymobiledevice3 unavailable`);
+    } else if (devModeEnabled) {
+      setStep('sq-devmode', 'done', `Developer Mode ON${hasPasscode ? ' (passcode set — UI Automation must be ON)' : ' ✓'}`);
       console.log(`[PreFlight] ${udid}: Developer Mode already enabled ✓`);
     } else {
       // Try to enable Developer Mode automatically
