@@ -248,61 +248,47 @@ async function runSquareSetup(device, deviceCode) {
       console.log(`[PreFlight] ${udid}: Developer Mode OFF — enabling...`);
 
       try {
-        await execFileAsync(PYMOBILE, [
+        // Fire-and-forget: the command triggers a reboot which kills the USB connection,
+        // so we don't wait for clean exit. Just give it a few seconds to send the command.
+        const enablePromise = execFileAsync(PYMOBILE, [
           'amfi', 'enable-developer-mode', '--udid', udid,
-        ], { timeout: 60000 });
+        ], { timeout: 15000 });
 
-        // Wait for device to reboot and come back
-        setStep('sq-devmode', 'running', 'Device rebooting — waiting for it to come back...');
-        console.log(`[PreFlight] ${udid}: Reboot triggered, waiting...`);
+        // Wait a few seconds for the command to be sent, then move on regardless
+        await Promise.race([
+          enablePromise,
+          new Promise(r => setTimeout(r, 8000)),
+        ]);
+      } catch (e) {
+        // Expected — the reboot kills the connection, causing an error. That's fine.
+        console.log(`[PreFlight] ${udid}: Enable command ended (expected during reboot): ${e.message?.slice(0, 100)}`);
+      }
 
-        let rebooted = false;
-        for (let i = 0; i < 18; i++) {
-          await new Promise(r => setTimeout(r, 5000));
-          try {
-            const { stdout } = await execFileAsync(PYMOBILE, [
-              'amfi', 'developer-mode-status', '--udid', udid,
-            ], { timeout: 10000 });
-            if (stdout.trim().toLowerCase() === 'true') {
-              rebooted = true;
-              break;
-            }
-          } catch { /* device still rebooting */ }
-        }
+      // Wait for device to reboot and come back
+      setStep('sq-devmode', 'running', 'Device rebooting — waiting for it to come back...');
+      console.log(`[PreFlight] ${udid}: Reboot triggered, waiting...`);
 
-        if (rebooted) {
-          setStep('sq-devmode', 'done', 'Developer Mode auto-enabled ✓');
-          console.log(`[PreFlight] ${udid}: Developer Mode enabled successfully`);
-        } else if (hasPasscode) {
-          setStep('sq-devmode', 'error', 'Passcode blocking auto-enable — confirm on iPad screen');
-          throw new Error(
-            'Developer Mode enable requires manual confirmation because a passcode is set. ' +
-            'Either: (1) Remove the passcode first, then retry, or ' +
-            '(2) On the iPad after reboot: confirm the Developer Mode prompt and enter passcode.'
-          );
-        } else {
-          setStep('sq-devmode', 'error', 'Developer Mode could not be enabled');
-          throw new Error(
-            'Developer Mode could not be auto-enabled. ' +
-            'On the iPad: Settings → Privacy & Security → Developer Mode → ON.'
-          );
-        }
-      } catch (enableErr) {
-        if (enableErr.message.includes('requires manual confirmation') ||
-            enableErr.message.includes('could not be auto-enabled')) throw enableErr;
-        console.log(`[PreFlight] ${udid}: Auto-enable failed: ${enableErr.message}`);
+      let rebooted = false;
+      for (let i = 0; i < 24; i++) {  // 24 × 5s = 120s max wait
+        await new Promise(r => setTimeout(r, 5000));
+        try {
+          const { stdout } = await execFileAsync(PYMOBILE, [
+            'amfi', 'developer-mode-status', '--udid', udid,
+          ], { timeout: 10000 });
+          if (stdout.trim().toLowerCase() === 'true') {
+            rebooted = true;
+            break;
+          }
+        } catch { /* device still rebooting */ }
+      }
 
-        if (hasPasscode) {
-          setStep('sq-devmode', 'error', 'Remove passcode before provisioning, or enable Developer Mode manually');
-          throw new Error(
-            'Cannot auto-enable Developer Mode on a passcode-protected device. ' +
-            'Remove the passcode (Settings → Face ID & Passcode → Turn Passcode Off), ' +
-            'then retry. MDM can push the passcode policy after provisioning.'
-          );
-        }
-        setStep('sq-devmode', 'error', 'Enable Developer Mode manually on iPad');
+      if (rebooted) {
+        setStep('sq-devmode', 'done', 'Developer Mode auto-enabled ✓');
+        console.log(`[PreFlight] ${udid}: Developer Mode enabled successfully`);
+      } else {
+        setStep('sq-devmode', 'error', 'Developer Mode could not be verified after reboot');
         throw new Error(
-          'Developer Mode is OFF and could not be auto-enabled. ' +
+          'Developer Mode could not be auto-enabled. ' +
           'On the iPad: Settings → Privacy & Security → Developer Mode → ON.'
         );
       }
