@@ -43,28 +43,29 @@ Each iPad needs:
 
 ## Performance
 
-Benchmarked on iPad 8th Gen (iPadOS 26.5), Mac with M1 Max (64GB RAM, 10 cores):
+Benchmarked on iPad 8th Gen (iPadOS 26.5):
 
 | Scenario | Time per iPad |
-|----------|--------------|
+|----------|--------------:|
 | **First run** (Developer Mode + WDA deploy + sign-in) | ~2 min 20 sec |
 | **Re-provision** (Developer Mode already on) | ~1 min 30 sec |
 
-### Fleet estimates for 90 iPads
+### Fleet estimates for 96 iPads (6× Cambrionix ThunderSync-16)
 
 | Concurrency | Batches | First Run | Re-provision |
-|------------|---------|-----------|-------------|
-| 5 | 18 | ~42 min | ~27 min |
-| **10 (default)** | **9** | **~21 min** | **~14 min** |
-| 15 | 6 | ~14 min | ~9 min |
+|:-----------:|:-------:|:---------:|:------------:|
+| 5 | 20 | ~47 min | ~30 min |
+| **8 (default)** | **12** | **~28 min** | **~18 min** |
+| 10 | 10 | ~23 min | ~15 min |
+| 15 | 7 | ~16 min | ~11 min |
 
 Each concurrent device gets its own WDA port (8100, 8101, 8102, ...) from a managed pool. Tune `appiumConcurrency` in `config.mjs` based on your Mac:
 
 | Mac RAM | Recommended Concurrency |
-|---------|------------------------|
+|:-------:|:-----------------------:|
 | 8 GB | 3 |
 | 16 GB | 5 |
-| 32 GB | 8–10 |
+| 32 GB | 8 |
 | 64 GB+ | 10–15 |
 
 ### Timing breakdown (per device)
