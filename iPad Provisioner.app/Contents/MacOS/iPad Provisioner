@@ -4,9 +4,9 @@
 #  Starts Appium + Server, opens browser. No terminal needed.
 # ═══════════════════════════════════════════════════════════
 
+# Resolve the project directory (3 levels up from Contents/MacOS/)
 APP_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
 LOG_FILE="$APP_DIR/provisioner.log"
-PID_FILE="$APP_DIR/.provisioner.pid"
 
 # ── Load nvm ──────────────────────────────────────────────
 export NVM_DIR="$HOME/.nvm"
@@ -23,57 +23,19 @@ if [ -d "/Applications/Xcode.app" ]; then
   export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
 fi
 
-# ── Cleanup function ──────────────────────────────────────
-cleanup() {
-  echo "$(date): Shutting down..." >> "$LOG_FILE"
-  if [ -f "$PID_FILE" ]; then
-    while read pid; do
-      kill "$pid" 2>/dev/null
-    done < "$PID_FILE"
-    rm -f "$PID_FILE"
-  fi
-  # Kill any Appium we started
-  pkill -f "appium.*--relaxed-security" 2>/dev/null
-}
-
-# Check if already running
-if [ -f "$PID_FILE" ]; then
-  RUNNING=true
-  while read pid; do
-    if ! kill -0 "$pid" 2>/dev/null; then
-      RUNNING=false
-      break
-    fi
-  done < "$PID_FILE"
-  
-  if [ "$RUNNING" = true ]; then
-    # Already running — just open browser
-    echo "$(date): Already running, opening browser" >> "$LOG_FILE"
-    open "http://localhost:3456"
-    exit 0
-  else
-    # Stale PID file, clean up
-    cleanup
-  fi
-fi
-
-# ── Start fresh ──────────────────────────────────────────
+# ── Start log ─────────────────────────────────────────────
 echo "" > "$LOG_FILE"
 echo "═══════════════════════════════════════════" >> "$LOG_FILE"
 echo "  iPad Provisioner — Starting" >> "$LOG_FILE"
 echo "  $(date)" >> "$LOG_FILE"
 echo "═══════════════════════════════════════════" >> "$LOG_FILE"
 
-trap cleanup EXIT
-
 # ── Start Appium if not running ───────────────────────────
 if ! curl -s http://localhost:4723/status > /dev/null 2>&1; then
   echo "$(date): Starting Appium..." >> "$LOG_FILE"
   appium --relaxed-security >> "$LOG_FILE" 2>&1 &
   APPIUM_PID=$!
-  echo "$APPIUM_PID" > "$PID_FILE"
-  
-  # Wait for Appium to be ready (up to 30s)
+
   for i in $(seq 1 30); do
     if curl -s http://localhost:4723/status > /dev/null 2>&1; then
       echo "$(date): Appium ready ✓" >> "$LOG_FILE"
@@ -85,31 +47,28 @@ else
   echo "$(date): Appium already running ✓" >> "$LOG_FILE"
 fi
 
-# ── Start server ──────────────────────────────────────────
-echo "$(date): Starting provisioner server..." >> "$LOG_FILE"
-cd "$APP_DIR"
-node server.mjs >> "$LOG_FILE" 2>&1 &
-SERVER_PID=$!
-echo "$SERVER_PID" >> "$PID_FILE"
+# ── Start server if not running ───────────────────────────
+if ! curl -s http://localhost:3456 > /dev/null 2>&1; then
+  echo "$(date): Starting server..." >> "$LOG_FILE"
+  cd "$APP_DIR"
+  node server.mjs >> "$LOG_FILE" 2>&1 &
+  SERVER_PID=$!
 
-# Wait for server to be ready (up to 10s)
-for i in $(seq 1 10); do
-  if curl -s http://localhost:3456 > /dev/null 2>&1; then
-    echo "$(date): Server ready ✓" >> "$LOG_FILE"
-    break
-  fi
-  sleep 1
-done
+  for i in $(seq 1 10); do
+    if curl -s http://localhost:3456 > /dev/null 2>&1; then
+      echo "$(date): Server ready ✓" >> "$LOG_FILE"
+      break
+    fi
+    sleep 1
+  done
+else
+  echo "$(date): Server already running ✓" >> "$LOG_FILE"
+fi
 
 # ── Open browser ──────────────────────────────────────────
-echo "$(date): Opening browser..." >> "$LOG_FILE"
 open "http://localhost:3456"
 
 # ── Show notification ─────────────────────────────────────
 osascript -e 'display notification "Appium + Server running. Browser opened." with title "iPad Provisioner" subtitle "Ready at localhost:3456"' 2>/dev/null
 
-echo "$(date): All services running. Waiting..." >> "$LOG_FILE"
-
-# ── Keep alive until the app is quit ──────────────────────
-# This keeps the dock icon alive. When user Cmd+Q's, cleanup runs.
-wait $SERVER_PID
+echo "$(date): Launch complete ✓" >> "$LOG_FILE"
