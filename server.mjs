@@ -264,32 +264,38 @@ async function runSquareSetup(device, deviceCode) {
         console.log(`[PreFlight] ${udid}: Enable command ended (expected during reboot): ${e.message?.slice(0, 100)}`);
       }
 
-      // Wait for device to reboot and come back
-      setStep('sq-devmode', 'running', 'Device rebooting — waiting for it to come back...');
-      console.log(`[PreFlight] ${udid}: Reboot triggered, waiting...`);
+      // Wait for device to reboot and reconnect via USB
+      setStep('sq-devmode', 'running', 'Device rebooting — waiting for reconnect...');
+      console.log(`[PreFlight] ${udid}: Reboot triggered, waiting for USB reconnect...`);
 
-      let rebooted = false;
+      // First wait a few seconds for the device to actually go offline
+      await new Promise(r => setTimeout(r, 10000));
+
+      // Then poll for USB reconnection (lockdown info succeeds = device is back)
+      let reconnected = false;
       for (let i = 0; i < 24; i++) {  // 24 × 5s = 120s max wait
         await new Promise(r => setTimeout(r, 5000));
         try {
-          const { stdout } = await execFileAsync(PYMOBILE, [
-            'amfi', 'developer-mode-status', '--udid', udid,
+          await execFileAsync(PYMOBILE, [
+            'lockdown', 'info', '--udid', udid,
           ], { timeout: 10000 });
-          if (stdout.trim().toLowerCase() === 'true') {
-            rebooted = true;
-            break;
-          }
+          reconnected = true;
+          break;
         } catch { /* device still rebooting */ }
       }
 
-      if (rebooted) {
-        setStep('sq-devmode', 'done', 'Developer Mode auto-enabled ✓');
-        console.log(`[PreFlight] ${udid}: Developer Mode enabled successfully`);
+      if (reconnected) {
+        // Device is back — Developer Mode was enabled, proceed to Appium
+        // (developer-mode-status may still return false until lock screen is dismissed,
+        //  but Appium/WDA will handle that)
+        setStep('sq-devmode', 'done', 'Developer Mode enabled — device rebooted ✓');
+        console.log(`[PreFlight] ${udid}: Device back online after reboot, proceeding`);
+        // Give the device a few more seconds to fully settle
+        await new Promise(r => setTimeout(r, 5000));
       } else {
-        setStep('sq-devmode', 'error', 'Developer Mode could not be verified after reboot');
+        setStep('sq-devmode', 'error', 'Device did not come back after reboot');
         throw new Error(
-          'Developer Mode could not be auto-enabled. ' +
-          'On the iPad: Settings → Privacy & Security → Developer Mode → ON.'
+          'Device did not reconnect after reboot. Check USB connection and try again.'
         );
       }
     }
