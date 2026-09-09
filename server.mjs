@@ -8,7 +8,8 @@ try {
     const match = line.match(/^\s*([^#=]+?)\s*=\s*(.*?)\s*$/);
     if (match && !process.env[match[1]]) process.env[match[1]] = match[2];
   }
-} catch { /* no .env file, that's fine */ }
+  console.log(`[Config] .env loaded — GEMINI_API_KEY ${process.env.GEMINI_API_KEY ? 'set (' + process.env.GEMINI_API_KEY.slice(0,6) + '...)' : 'NOT SET'}`);
+} catch (e) { console.log(`[Config] No .env file: ${e.message?.slice(0, 100)}`); }
 
 // ╔══════════════════════════════════════════════════════════════════╗
 // ║  iPad Provisioner — Web UI Server                                ║

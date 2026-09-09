@@ -6,7 +6,7 @@ export const CONFIG = {
 
   // ── Gemini API (powers the AI vision agent for app navigation) ──
   // Get your key: https://aistudio.google.com/app/apikey
-  geminiApiKey: process.env.GEMINI_API_KEY || 'YOUR_GEMINI_API_KEY_HERE',
+  get geminiApiKey() { return process.env.GEMINI_API_KEY || 'YOUR_GEMINI_API_KEY_HERE'; },
 
   // ── WiFi ────────────────────────────────────────────────────────
   wifi: {
