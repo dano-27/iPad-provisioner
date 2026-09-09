@@ -4,20 +4,18 @@
 #  Starts Appium + Server, opens browser. No terminal needed.
 # ═══════════════════════════════════════════════════════════
 
+# Force arm64 on Apple Silicon (prevents Rosetta from breaking pymobiledevice3)
+if [ "$(uname -m)" = "x86_64" ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null)" = "1" ]; then
+  exec arch -arm64 "$0" "$@"
+fi
+
 # Resolve the project directory (3 levels up from Contents/MacOS/)
 APP_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
 LOG_FILE="$APP_DIR/provisioner.log"
 
-# ── Load full shell environment ───────────────────────────
-# macOS .app bundles get a minimal PATH. Source the user's profile
-# so Python, pymobiledevice3, Homebrew, etc. are all available.
-if [ -f "$HOME/.bash_profile" ]; then
-  source "$HOME/.bash_profile" 2>/dev/null
-elif [ -f "$HOME/.zprofile" ]; then
-  source "$HOME/.zprofile" 2>/dev/null
-elif [ -f "$HOME/.profile" ]; then
-  source "$HOME/.profile" 2>/dev/null
-fi
+# ── Set up PATH for tools ─────────────────────────────────
+# macOS .app bundles get a minimal PATH. Add common tool locations.
+export PATH="/Library/Frameworks/Python.framework/Versions/3.12/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
 # ── Load nvm ──────────────────────────────────────────────
 export NVM_DIR="$HOME/.nvm"

@@ -212,8 +212,9 @@ async function runSquareSetup(device, deviceCode) {
       hasPasscode = stdout.includes('"PasswordProtected": true');
       console.log(`[PreFlight] ${udid}: Passcode ${hasPasscode ? 'SET ⚠' : 'not set ✓'}`);
     } catch (e) {
-      console.log(`[PreFlight] ${udid}: Could not check passcode: ${e.message?.slice(0, 150)}`);
-      if (e.message.includes('ImportError') || e.message.includes('dlopen') || e.message.includes('ENOENT')) {
+      const fullErr = `${e.stderr || ''}\n${e.message || ''}`;
+      console.log(`[PreFlight] ${udid}: Could not check passcode:\n${fullErr.slice(0, 2000)}`);
+      if (fullErr.includes('ImportError') || fullErr.includes('dlopen') || fullErr.includes('ENOENT') || fullErr.includes('Traceback')) {
         pymobileAvailable = false;
       }
     }
